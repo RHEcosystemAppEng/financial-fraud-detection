@@ -171,12 +171,6 @@ def preprocess_data(tabformer_base_path):
 
     data = cudf.read_csv(tabformer_raw_file_path)
 
-    # ##### Save a few transactions before any operations on data
-
-    # # Write a few raw transactions for model's inference
-    # out_path = os.path.join(tabformer_xgb, "example_transactions.csv")
-    # data.tail(10).to_pandas().to_csv(out_path, header=True, index=False)
-
     _ = data.rename(
         columns={
             "Merchant Name": COL_MERCHANT,
@@ -770,59 +764,6 @@ def preprocess_data(tabformer_base_path):
         out_path, header=True, index=False, columns=columns_of_transformed_data
     )
 
-    # # Node feature matrix
-    # U = preprocessed_user_data.values
-    # M = preprocessed_merchant_data.values
-    # T = transaction_feature_df[columns_of_transformed_data].values
-
-    # combined_cols = (
-    #     user_feature_columns + mx_feature_columns + columns_of_transformed_data
-    # )
-
-    # node_feature_df = pd.DataFrame(block_diag(U, M, T), columns=combined_cols)
-
-    # assert COL_FRAUD not in (
-    #     list(preprocessed_user_data.columns)
-    #     + list(preprocessed_merchant_data.columns)
-    #     + columns_of_transformed_data
-    # )
-
-    # # Write out node feature matrix
-    # # out_path = os.path.join(tabformer_gnn, "nodes/node.csv")
-    # # if not os.path.exists(os.path.dirname(out_path)):
-    # #     os.makedirs(os.path.dirname(out_path))
-    # # node_feature_df.to_csv(out_path, header=True, index=False, columns=combined_cols)
-
-    # ## Node labels
-
-    # # Initialize with all zeros
-    # node_label_df = pd.DataFrame(
-    #     np.zeros(len(node_feature_df), dtype=int), columns=[COL_FRAUD]
-    # )
-
-    # # Copy the label of transactions to corresponding indices
-    # node_label_df.iloc[NR_USERS + NR_MXS : NR_USERS + NR_MXS + NR_TXS, 0] = (
-    #     transaction_feature_df[COL_FRAUD].values
-    # )
-
-    # # # Write out node labels
-    # # out_path = os.path.join(tabformer_gnn, "nodes/node_label.csv")
-    # # if not os.path.exists(os.path.dirname(out_path)):
-    # #     os.makedirs(os.path.dirname(out_path))
-    # # node_label_df.to_csv(out_path, header=True, index=False, columns=[COL_FRAUD])
-
-    # assert data[COL_FRAUD].sum() == node_label_df[COL_FRAUD].sum()
-
-    # # Write NUM_TRANSACTION_NODES in info.json file
-    # # with open(
-    # #     os.path.join(tabformer_gnn, "nodes/offset_range_of_training_node.json"), "w"
-    # # ) as json_file:
-    # #     json.dump(
-    # #         {"start": int(NR_USERS + NR_MXS), "end": int(NR_USERS + NR_MXS + NR_TXS)},
-    # #         json_file,
-    # #         indent=4,
-    # #     )
-
     ## Test data
 
     data = data_all[test_idx].copy()
@@ -947,55 +888,6 @@ def preprocess_data(tabformer_base_path):
     transaction_feature_df[columns_of_transformed_data].to_csv(
         out_path, header=True, index=False, columns=columns_of_transformed_data
     )
-
-    # U = preprocessed_user_data.values
-    # M = preprocessed_merchant_data.values
-    # T = transaction_feature_df[columns_of_transformed_data].values
-
-    # combined_cols = (
-    #     user_feature_columns + mx_feature_columns + columns_of_transformed_data
-    # )
-
-    # node_feature_df = pd.DataFrame(block_diag(U, M, T), columns=combined_cols)
-
-    # assert COL_FRAUD not in (
-    #     list(preprocessed_user_data.columns)
-    #     + list(preprocessed_merchant_data.columns)
-    #     + columns_of_transformed_data
-    # )
-
-    # # Write out node features
-    # # out_path = os.path.join(tabformer_gnn, "test_gnn/nodes/node.csv")
-    # # if not os.path.exists(os.path.dirname(out_path)):
-    # #     os.makedirs(os.path.dirname(out_path))
-    # # node_feature_df.to_csv(out_path, header=True, index=False, columns=combined_cols)
-
-    # ## Node labels
-
-    # # Initialize with all zeros
-    # node_label_df = pd.DataFrame(
-    #     np.zeros(len(node_feature_df), dtype=int), columns=[COL_FRAUD]
-    # )
-
-    # # Copy the label of transactions to corresponding indices
-    # node_label_df.iloc[NR_USERS + NR_MXS : NR_USERS + NR_MXS + NR_TXS, 0] = (
-    #     transaction_feature_df[COL_FRAUD].values
-    # )
-
-    # # Write out node labels
-    # # out_path = os.path.join(tabformer_gnn, "test_gnn/nodes/node_label.csv")
-    # # if not os.path.exists(os.path.dirname(out_path)):
-    # #     os.makedirs(os.path.dirname(out_path))
-    # # node_label_df.to_csv(out_path, header=True, index=False, columns=[COL_FRAUD])
-
-    # assert set(node_label_df) - set(node_feature_df) == set([COL_FRAUD])
-    # assert node_label_df[COL_FRAUD][0 : NR_USERS + NR_MXS].sum() == 0
-    # assert (
-    #     test_idx.sum() + training_idx.sum() + validation_idx.sum() == data_all.shape[0]
-    # )
-    # assert COL_FRAUD not in set(node_feature_df.columns)
-    # assert COL_FRAUD in set(node_label_df.columns)
-    # assert set(node_feature_df.columns) == set(combined_cols)
 
     return create_feature_mask(
         user_feature_columns + mx_feature_columns + columns_of_transformed_data
