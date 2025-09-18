@@ -121,11 +121,11 @@ def cramers_v(x, y):
     return np.sqrt(chi2 / (n * (min(k - 1, r - 1))))
 
 
-def create_feature_mask(columns):
+def create_feature_mask(columns, start_mask_id=0):
     # Dictionary to store mapping from original column to mask value
     mask_mapping = {}
     mask_values = []
-    current_mask = 0
+    current_mask = start_mask_id
 
     for col in columns:
         # For encoded columns, assume the base is before the underscore
@@ -443,7 +443,7 @@ def preprocess_data(tabformer_base_path):
     transformer = transformer.fit(pdf_training[predictor_columns])
 
     # transformed column names
-    columns_of_transformed_data = list(
+    columns_of_transformed_txs = list(
         map(
             lambda name: name.split("__")[1],
             list(transformer.get_feature_names_out(predictor_columns)),
@@ -452,7 +452,7 @@ def preprocess_data(tabformer_base_path):
 
     # data type of transformed columns
     type_mapping = {}
-    for col in columns_of_transformed_data:
+    for col in columns_of_transformed_txs:
         if col.split("_")[0] in nominal_predictors:
             type_mapping[col] = "int8"
         elif col in numerical_predictors:
@@ -465,7 +465,7 @@ def preprocess_data(tabformer_base_path):
 
     # Convert transformed data to panda DataFrame
     preprocessed_training_data = pd.DataFrame(
-        preprocessed_training_data, columns=columns_of_transformed_data
+        preprocessed_training_data, columns=columns_of_transformed_txs
     )
 
     # Transform test data using the transformer fitted on training data
@@ -474,7 +474,7 @@ def preprocess_data(tabformer_base_path):
 
     preprocessed_test_data = transformer.transform(pdf_test[predictor_columns])
     preprocessed_test_data = pd.DataFrame(
-        preprocessed_test_data, columns=columns_of_transformed_data
+        preprocessed_test_data, columns=columns_of_transformed_txs
     )
 
     # Transform validation data using the transformer fitted on training data
@@ -487,7 +487,7 @@ def preprocess_data(tabformer_base_path):
         pdf_validation[predictor_columns]
     )
     preprocessed_validation_data = pd.DataFrame(
-        preprocessed_validation_data, columns=columns_of_transformed_data
+        preprocessed_validation_data, columns=columns_of_transformed_txs
     )
 
     preprocessed_id_data_train = pd.DataFrame(
@@ -508,14 +508,12 @@ def preprocess_data(tabformer_base_path):
     assert (
         set(preprocessed_training_data.columns)
         - set(
-            columns_of_transformed_data + columns_of_transformed_id_data + target_column
+            columns_of_transformed_txs + columns_of_transformed_id_data + target_column
         )
         == set()
     )
     assert (
-        set(
-            columns_of_transformed_data + columns_of_transformed_id_data + target_column
-        )
+        set(columns_of_transformed_txs + columns_of_transformed_id_data + target_column)
         - set(preprocessed_training_data.columns)
         == set()
     )
@@ -547,14 +545,12 @@ def preprocess_data(tabformer_base_path):
     assert (
         set(preprocessed_validation_data.columns)
         - set(
-            columns_of_transformed_data + columns_of_transformed_id_data + target_column
+            columns_of_transformed_txs + columns_of_transformed_id_data + target_column
         )
         == set()
     )
     assert (
-        set(
-            columns_of_transformed_data + columns_of_transformed_id_data + target_column
-        )
+        set(columns_of_transformed_txs + columns_of_transformed_id_data + target_column)
         - set(preprocessed_validation_data.columns)
         == set()
     )
@@ -587,14 +583,12 @@ def preprocess_data(tabformer_base_path):
     assert (
         set(preprocessed_test_data.columns)
         - set(
-            columns_of_transformed_data + columns_of_transformed_id_data + target_column
+            columns_of_transformed_txs + columns_of_transformed_id_data + target_column
         )
         == set()
     )
     assert (
-        set(
-            columns_of_transformed_data + columns_of_transformed_id_data + target_column
-        )
+        set(columns_of_transformed_txs + columns_of_transformed_id_data + target_column)
         - set(preprocessed_test_data.columns)
         == set()
     )
@@ -690,7 +684,7 @@ def preprocess_data(tabformer_base_path):
 
     transaction_feature_df = pd.DataFrame(
         transformer.transform(data[predictor_columns]),
-        columns=columns_of_transformed_data,
+        columns=columns_of_transformed_txs,
     ).astype(type_mapping)
 
     transaction_feature_df[COL_FRAUD] = data[COL_FRAUD]
@@ -760,8 +754,8 @@ def preprocess_data(tabformer_base_path):
     out_path = os.path.join(tabformer_gnn, "edges/user_to_merchant_attr.csv")
     if not os.path.exists(os.path.dirname(out_path)):
         os.makedirs(os.path.dirname(out_path))
-    transaction_feature_df[columns_of_transformed_data].to_csv(
-        out_path, header=True, index=False, columns=columns_of_transformed_data
+    transaction_feature_df[columns_of_transformed_txs].to_csv(
+        out_path, header=True, index=False, columns=columns_of_transformed_txs
     )
 
     ## Test data
@@ -828,7 +822,7 @@ def preprocess_data(tabformer_base_path):
 
     transaction_feature_df = pd.DataFrame(
         transformer.transform(data[predictor_columns]),
-        columns=columns_of_transformed_data,
+        columns=columns_of_transformed_txs,
     ).astype(type_mapping)
 
     transaction_feature_df[COL_FRAUD] = data[COL_FRAUD]
@@ -885,10 +879,35 @@ def preprocess_data(tabformer_base_path):
     if not os.path.exists(os.path.dirname(out_path)):
         os.makedirs(os.path.dirname(out_path))
 
-    transaction_feature_df[columns_of_transformed_data].to_csv(
-        out_path, header=True, index=False, columns=columns_of_transformed_data
+    transaction_feature_df[columns_of_transformed_txs].to_csv(
+        out_path, header=True, index=False, columns=columns_of_transformed_txs
     )
 
-    return create_feature_mask(
-        user_feature_columns + mx_feature_columns + columns_of_transformed_data
+    user_mask_map, user_mask = create_feature_mask(user_feature_columns, 0)
+    mx_mask_map, mx_mask = create_feature_mask(
+        mx_feature_columns, np.max(user_mask) + 1
     )
+    tx_mask_map, tx_mask = create_feature_mask(
+        columns_of_transformed_txs, np.max(mx_mask) + 1
+    )
+
+    np.savetxt(
+        os.path.join(tabformer_gnn, "test_gnn/nodes/user_feature_mask.csv"),
+        user_mask,
+        delimiter=",",
+        fmt="%d",
+    )
+    np.savetxt(
+        os.path.join(tabformer_gnn, "test_gnn/nodes/merchant_feature_mask.csv"),
+        mx_mask,
+        delimiter=",",
+        fmt="%d",
+    )
+    np.savetxt(
+        os.path.join(tabformer_gnn, "test_gnn/edges/user_to_merchant_feature_mask.csv"),
+        tx_mask,
+        delimiter=",",
+        fmt="%d",
+    )
+
+    return user_mask_map, mx_mask_map, tx_mask_map
