@@ -60,14 +60,13 @@
 #
 
 
-import json
 import os
-
 import cudf
 import numpy as np
 import pandas as pd
 import scipy.stats as ss
-from scipy.linalg import block_diag
+import networkx as nx
+import matplotlib.pyplot as plt
 from category_encoders import BinaryEncoder
 from scipy.stats import pointbiserialr
 from sklearn.compose import ColumnTransformer
@@ -911,3 +910,230 @@ def preprocess_data(tabformer_base_path):
     )
 
     return user_mask_map, mx_mask_map, tx_mask_map
+
+
+def load_hetero_graph(base):
+    """
+    Reads:
+      - All node CSVs from nodes/, plus their matching feature masks (<node>_feature_mask.csv)
+        If missing, a mask of all ones is created (np.int32).
+      - All edge CSVs from edges/:
+          base        -> edge_index_<edge> (np.int64)
+          *_attr.csv  -> edge_attr_<edge>  (np.float32)
+          *_label.csv -> exactly one -> edge_label_<edge> (DataFrame)
+    """
+
+    nodes_dir = os.path.join(base, "nodes")
+    edges_dir = os.path.join(base, "edges")
+
+    out = {}
+    node_feature_mask = {}
+
+    # --- Nodes: every CSV becomes x_<node>; also read/create feature_mask_<node> ---
+    if os.path.isdir(nodes_dir):
+        for fname in os.listdir(nodes_dir):
+            if fname.lower().endswith(".csv") and not fname.lower().endswith(
+                "_feature_mask.csv"
+            ):
+                node_name = fname[: -len(".csv")]
+                node_path = os.path.join(nodes_dir, fname)
+                node_df = pd.read_csv(node_path)
+                out[f"x_{node_name}"] = node_df.to_numpy(dtype=np.float32)
+
+                # feature mask file (optional)
+                mask_fname = f"{node_name}_feature_mask.csv"
+                mask_path = os.path.join(nodes_dir, mask_fname)
+                if os.path.exists(mask_path):
+                    mask_df = pd.read_csv(mask_path, header=None)
+                    node_feature_mask[node_name] = mask_df
+                    feature_mask = mask_df.to_numpy(dtype=np.int32).ravel()
+                else:
+                    # create a must with all zeros
+                    feature_mask = np.zeros(node_df.shape[1], dtype=np.int32)
+                out[f"feature_mask_{node_name}"] = feature_mask
+
+    # --- Edges: group into base, attr, label by filename suffix ---
+    base_edges = {}
+    edge_attrs = {}
+    edge_labels = {}
+    edge_feature_mask = {}
+
+    if os.path.isdir(edges_dir):
+        for fname in os.listdir(edges_dir):
+            if not fname.lower().endswith(".csv"):
+                continue
+            path = os.path.join(edges_dir, fname)
+            lower = fname.lower()
+            if lower.endswith("_attr.csv"):
+                edge_name = fname[: -len("_attr.csv")]
+                edge_attrs[edge_name] = pd.read_csv(path)  # , header=None)
+            elif lower.endswith("_label.csv"):
+                edge_name = fname[: -len("_label.csv")]
+                edge_labels[edge_name] = pd.read_csv(path)
+            elif lower.endswith("_feature_mask.csv"):
+                edge_name = fname[: -len("_feature_mask.csv")]
+                edge_feature_mask[edge_name] = pd.read_csv(path, header=None)
+            else:
+                edge_name = fname[: -len(".csv")]
+                base_edges[edge_name] = pd.read_csv(path)  # , header=None)
+
+    # Enforce: only one label file total
+    if len(edge_labels) == 0:
+        raise FileNotFoundError(
+            "No '*_label.csv' found in edges/. Exactly one label file is required."
+        )
+    if len(edge_labels) > 1:
+        raise ValueError(
+            f"Found multiple label files: {list(edge_labels.keys())}. Exactly one is allowed."
+        )
+
+    # Build output keys for edges
+    for edge_name, df in base_edges.items():
+        out[f"edge_index_{edge_name}"] = df.to_numpy(dtype=np.int64).T
+        if edge_name in edge_attrs:
+            out[f"edge_attr_{edge_name}"] = edge_attrs[edge_name].to_numpy(
+                dtype=np.float32
+            )
+        if edge_name in edge_feature_mask:
+            out[f"edge_feature_mask_{edge_name}"] = (
+                edge_feature_mask[edge_name].to_numpy(dtype=np.int32).ravel()
+            )
+        else:
+            # create a must with all zeros
+            out[f"edge_feature_mask_{edge_name}"] = np.zeros(
+                edge_attrs[edge_name].shape[1], dtype=np.int32
+            )
+
+    # Add the single label file (kept as DataFrame)
+    ((label_edge_name, label_df),) = edge_labels.items()
+    out[f"edge_label_{label_edge_name}"] = label_df
+
+    return out
+
+
+def prepare_bipartite_structures(edge_list: np.ndarray):
+    """
+    From a (2, E) edge array (row0=A, row1=B):
+      - returns unique node arrays A_nodes, B_nodes
+      - returns neighbor dicts neighbors_A[a]->set(B), neighbors_B[b]->set(A)
+      - returns highest-degree node in A, plus its 1-hop (B) and 2-hop (A) neighbors
+    """
+    assert (
+        edge_list.ndim == 2 and edge_list.shape[0] == 2
+    ), "edge_list must be shape (2, E)"
+    A_nodes = np.unique(edge_list[0, :])
+    B_nodes = np.unique(edge_list[1, :])
+
+    # Neighbor maps
+    neighbors_A = {int(a): set() for a in A_nodes}
+    neighbors_B = {int(b): set() for b in B_nodes}
+    for a, b in edge_list.T:
+        a = int(a)
+        b = int(b)
+        neighbors_A[a].add(b)
+        neighbors_B[b].add(a)
+
+    # Degrees in A and highest-degree anchor
+    degrees_A = {a: len(neighbors_A[a]) for a in neighbors_A}
+    if not degrees_A:
+        raise ValueError("No nodes found in partition A.")
+
+    max_deg = min(5, max(degrees_A.values()))
+    # deterministic tie-break: smallest node id
+    anchor_A = min([a for a, d in degrees_A.items() if d == max_deg])
+
+    # 1-hop (B) and 2-hop (A) around the anchor
+    one_hop_B = sorted(neighbors_A[anchor_A])
+    two_hop_A = set()
+
+    for b in one_hop_B:
+        two_hop_A.update(list(neighbors_B[b])[:3])
+    two_hop_A.discard(anchor_A)
+    two_hop_A = sorted(two_hop_A)
+
+    return {
+        "A_nodes": A_nodes,
+        "B_nodes": B_nodes,
+        "neighbors_A": neighbors_A,
+        "neighbors_B": neighbors_B,
+        "degrees_A": degrees_A,
+        "anchor_A": anchor_A,
+        "anchor_degree": max_deg,
+        "one_hop_B": one_hop_B,
+        "two_hop_A": two_hop_A,
+    }
+
+
+def build_bipartite_graph(edge_list: np.ndarray) -> nx.Graph:
+    """Build a NetworkX bipartite graph with node attribute 'bipartite' (0 for A, 1 for B)."""
+    A_nodes = np.unique(edge_list[0, :]).astype(int)
+    B_nodes = np.unique(edge_list[1, :]).astype(int)
+    G = nx.Graph()
+    G.add_nodes_from(A_nodes, bipartite=0)
+    G.add_nodes_from(B_nodes, bipartite=1)
+    G.add_edges_from([(int(a), int(b)) for a, b in edge_list.T])
+    return G
+
+
+def induced_ego_two_hop_subgraph_namespaced(edge_list: np.ndarray):
+    """
+    Same logic as your induced_ego_two_hop_subgraph, but nodes are namespaced:
+      A-node a  -> ('A', a)
+      B-node b  -> ('B', b)
+    This guarantees edges draw only between the partitions.
+    """
+    info = prepare_bipartite_structures(edge_list)
+
+    A_nodes = info["A_nodes"].astype(int)
+    B_nodes = info["B_nodes"].astype(int)
+    A_map = {a: ("A", a) for a in A_nodes}
+    B_map = {b: ("B", b) for b in B_nodes}
+
+    anchor_A = info["anchor_A"]
+    one_hop_B = set(info["one_hop_B"])
+    two_hop_A = set(info["two_hop_A"])
+
+    # Build subgraph with namespaced nodes and bipartite attribute
+    G_sub = nx.Graph()
+    G_sub.add_nodes_from([A_map[anchor_A], *[A_map[a] for a in two_hop_A]], bipartite=0)
+    G_sub.add_nodes_from([B_map[b] for b in one_hop_B], bipartite=1)
+
+    for a, b in edge_list.T:
+        a = int(a)
+        b = int(b)
+        if (a == anchor_A or a in two_hop_A) and (b in one_hop_B):
+            G_sub.add_edge(A_map[a], B_map[b])
+
+    # Return maps so the plotter can highlight the anchor
+    return G_sub, info, A_map, B_map
+
+
+def plot_bipartite_subgraph_namespaced(G_sub: nx.Graph, info: dict, A_map: dict):
+    """
+    Plot the 2-hop ego subgraph with namespaced nodes.
+    Circles = A, Squares = B. The anchor A-node is larger.
+    """
+    anchor_tuple = A_map[info["anchor_A"]]
+    sub_A = [n for n, d in G_sub.nodes(data=True) if d.get("bipartite") == 0]
+    sub_B = [n for n, d in G_sub.nodes(data=True) if d.get("bipartite") == 1]
+
+    pos = nx.bipartite_layout(G_sub, nodes=sub_A)
+
+    plt.figure(figsize=(6, 5))
+    nx.draw_networkx_nodes(
+        G_sub,
+        pos,
+        nodelist=sub_A,
+        node_size=[600 if n == anchor_tuple else 300 for n in sub_A],
+        node_shape="o",
+    )
+    nx.draw_networkx_nodes(G_sub, pos, nodelist=sub_B, node_size=400, node_shape="s")
+    nx.draw_networkx_edges(G_sub, pos)
+
+    # Pretty labels: show only the numeric part (n[1])
+    labels = {n: str(n[1]) for n in G_sub.nodes()}
+    nx.draw_networkx_labels(G_sub, pos, labels=labels, font_size=10)
+
+    plt.title("A subgraph with a few user and merchant nodes.")
+    plt.axis("off")
+    plt.show()
