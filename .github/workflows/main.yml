@@ -14,7 +14,6 @@ jobs:
   run-notebook:
     runs-on: arc-runners-org-nvidia-ai-bp-1-gpu
     env:
-      #NOTEBOOK_PATH: ./financial-fraud-usage.ipynb
       NOTEBOOK_PATH: ./financial-fraud-usage-v2.ipynb
       PYTHON_VERSION: 3.12
     steps:
@@ -106,7 +105,6 @@ jobs:
         run: |
           echo "===================== System Info ====================="
           more /etc/os-release
-          nvidia-smi
 
       - name: Download Data File Using Docker
         run: |
