@@ -1,0 +1,64 @@
+image:
+  fullImage: "quay.io/fercoli/fraud-preprocess:latest"
+  # Fallback to internal registry if fullImage is not set.
+  registry: image-registry.openshift-image-registry.svc:5000
+  # Empty: use Helm release namespace. Override only if the ImageStream lives in a different project.
+  namespace: ""
+  pullPolicy: Always
+  repository: fraud-preprocess
+  tag: latest
+
+command:
+  - python
+  - -c
+  - |
+    import os, shutil, sys
+    sys.path.insert(0, '/workspace/src')
+    print('Setting up symlink...', flush=True)
+    raw_dir = '/data/TabFormer/raw'
+    link = os.path.join(raw_dir, 'card_transaction.v1.csv')
+    os.makedirs(raw_dir, exist_ok=True)
+    if os.path.exists(link) or os.path.islink(link):
+        os.remove(link)
+    os.symlink('/workspace/raw/card_transaction.v1.csv', link)
+    print('Starting preprocessing...', flush=True)
+    from preprocess_TabFormer_lp import preprocess_data
+    preprocess_data('/data/TabFormer')
+    print('Cleaning up...', flush=True)
+    os.remove(link)
+    shutil.rmtree(raw_dir)
+
+storage:
+  className: ""
+  size: 50Gi
+
+gpu:
+  tolerations:
+    - key: g6-gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: p4-gpu
+      operator: Exists
+      effect: NoSchedule
+
+securityContext:
+  runAsUser: 0
+
+nodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      - matchExpressions:
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+              - "true"
+
+resources:
+  requests:
+    nvidia.com/gpu: "1"
+    memory: 16Gi
+    cpu: "4"
+  limits:
+    nvidia.com/gpu: "1"
+    memory: 48Gi
+    cpu: "8"

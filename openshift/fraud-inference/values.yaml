@@ -1,0 +1,47 @@
+image:
+  fullImage: "quay.io/fercoli/triton-fraud-detection:1.0.1"
+  # Fallback to internal registry if fullImage is not set.
+  registry: image-registry.openshift-image-registry.svc:5000
+  namespace: ""
+  repository: fraud-triton
+  tag: latest
+  pullPolicy: Always
+
+gpu:
+  tolerations:
+    - key: g6-gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: p4-gpu
+      operator: Exists
+      effect: NoSchedule
+
+nodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      - matchExpressions:
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+              - "true"
+
+securityContext: {}
+
+resources:
+  requests:
+    nvidia.com/gpu: "1"
+    memory: 16Gi
+    cpu: "4"
+  limits:
+    nvidia.com/gpu: "1"
+    memory: 32Gi
+    cpu: "8"
+
+env:
+  TOKENIZERS_PARALLELISM: "false"
+  LD_LIBRARY_PATH: /opt/miniconda/lib:/opt/tritonserver/lib
+
+route:
+  enabled: true
+  host: ""
+  clusterDomain: apps.example.com
