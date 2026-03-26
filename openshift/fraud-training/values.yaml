@@ -1,0 +1,64 @@
+image:
+  fullImage: "nvcr.io/nvidia/cugraph/financial-fraud-training:2.0.0"
+  # Fallback to internal registry if fullImage is not set.
+  registry: nvcr.io
+  repository: nvidia/cugraph/financial-fraud-training
+  tag: "2.0.0"
+  pullPolicy: IfNotPresent
+
+trainingConfig:
+  paths:
+    data_dir: /data
+    output_dir: /trained_models
+  models:
+    - kind: GNN_XGBoost
+      gpu: single
+      hyperparameters:
+        gnn:
+          hidden_channels: 32
+          n_hops: 2
+          layer: SAGEConv
+          dropout_prob: 0.1
+          batch_size: 4096
+          fan_out: 10
+          num_epochs: 8
+        xgb:
+          max_depth: 6
+          learning_rate: 0.2
+          num_parallel_tree: 3
+          num_boost_round: 512
+          gamma: 0.0
+
+storage:
+  className: ""
+  size: 20Gi
+
+gpu:
+  tolerations:
+    - key: g6-gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: p4-gpu
+      operator: Exists
+      effect: NoSchedule
+
+nodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      - matchExpressions:
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+              - "true"
+
+securityContext: {}
+
+resources:
+  requests:
+    nvidia.com/gpu: "1"
+    memory: 16Gi
+    cpu: "4"
+  limits:
+    nvidia.com/gpu: "1"
+    memory: 32Gi
+    cpu: "8"
