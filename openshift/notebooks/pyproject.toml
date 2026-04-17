@@ -1,0 +1,23 @@
+[project]
+name = "notebooks"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "fraud-src",
+    "ipykernel>=7.2.0",
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.4",
+    "pandas>=3.0.2",
+    "requests>=2.33.1",
+    "scikit-learn>=1.8.0",
+    "tritonclient[all]>=2.67.0",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+    "jupyter>=1.1.1",
+]
+
+[tool.uv.sources]
+fraud-src = { path = "../../src", editable = true }
