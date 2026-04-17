@@ -7,7 +7,6 @@ metadata:
     app.kubernetes.io/component: triton
     {{- include "fraud-inference.labels" . | nindent 4 }}
 spec:
-  host: {{ include "fraud-inference.tritonHost" . | quote }}
   to:
     kind: Service
     name: fraud-triton

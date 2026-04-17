@@ -43,5 +43,3 @@ env:
 
 route:
   enabled: true
-  host: ""
-  clusterDomain: apps.example.com
