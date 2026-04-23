@@ -1,0 +1,16 @@
+{{- if .Values.minio.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  labels:
+    {{- include "fraud-init-pipeline.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+    - name: console
+      port: 9001
+{{- end }}

@@ -1,0 +1,46 @@
+storage:
+  data:
+    size: 50Gi
+    className: ""
+  models:
+    size: 20Gi
+    className: ""
+
+trainingConfig:
+  paths:
+    data_dir: /data/TabFormer/gnn
+    output_dir: /trained_models
+  models:
+    - kind: GNN_XGBoost
+      gpu: single
+      hyperparameters:
+        gnn:
+          hidden_channels: 32
+          n_hops: 2
+          layer: SAGEConv
+          dropout_prob: 0.1
+          batch_size: 4096
+          fan_out: 10
+          num_epochs: 8
+        xgb:
+          max_depth: 6
+          learning_rate: 0.2
+          num_parallel_tree: 3
+          num_boost_round: 512
+          gamma: 0.0
+
+ngcSecret:
+  # Set to true and supply registryKey to have Helm manage the secret.
+  # Alternatively, create the secret out-of-band and set create to false.
+  create: true
+  registryKey: ""
+
+minio:
+  enabled: true
+  image: quay.io/minio/minio:latest
+  rootUser: minio
+  rootPassword: minio123
+  storage:
+    size: 20Gi
+    className: ""
+  bucket: fraud-pipelines

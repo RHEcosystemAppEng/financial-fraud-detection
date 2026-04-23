@@ -1,0 +1,17 @@
+{{- if .Values.minio.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  labels:
+    {{- include "fraud-init-pipeline.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.minio.storage.size }}
+  {{- if .Values.minio.storage.className }}
+  storageClassName: {{ .Values.minio.storage.className }}
+  {{- end }}
+{{- end }}

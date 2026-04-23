@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fraud-data
+  labels:
+    {{- include "fraud-init-pipeline.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.data.size }}
+  {{- if .Values.storage.data.className }}
+  storageClassName: {{ .Values.storage.data.className }}
+  {{- end }}

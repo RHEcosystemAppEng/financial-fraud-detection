@@ -1,0 +1,6 @@
+apiVersion: v2
+name: fraud-init-pipeline
+description: Provisions the shared resources (PVCs, ConfigMap, image-pull secret) required by the Kubeflow fraud-preprocess-train pipeline
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fraud-kfp-training-config
+  labels:
+    {{- include "fraud-init-pipeline.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{- .Values.trainingConfig | toPrettyJson | nindent 4 }}
